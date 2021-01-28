@@ -1,0 +1,143 @@
+---
+title: "Mean-Variance Optimal Portfolio Using Simulation"
+author: "Ayushi Yadav"
+date: "10/10/2020"
+output: html_document
+extra_dependencies: ["amsmath"]
+---
+
+# Portfolio Basics
+In the world of finance, a portfolio is referred to as a collection of financial investments like stocks, bonds, commodities, cash and so on. $\underline{Modern\space Portfolio\space Theory}$ argues that when assembling a portfolio, an investment's risk and return metrics should not be valued as a separate entity, but rather evaluated on its impact on the overall portfolio's risk and return. Market risk, the investor's investment objectives, and time horizon are all critical factors when assembling and adjusting an investment portfolio. Using these factors as input variables, an investor can construct a portfolio with multiple assets and desired expected returns or lowest possible risk, using basic statistical measures such as variance and correlation. The theory is based on the assumptions that investors are risk averse and will prefer to invest in a low risk portfolio if they have a choice and all the information at hand. One way of analyzing and optimize portfolios is the $\underline{mean-variance \space analysis}$, which weighs risk expressed as variance against expected returns. If we have the weights of each security in the portfolio, we can calculate the portfolio mean and variance using matrix algebra. The following equations are used to calculate the weighted mean and variance of the 
+
+$$ R_{p} = w'R $$
+$$R_{p} = Return\space on\space Portfolios\\ w' = transpose\space of\space weight\space matrix$$
+
+
+$$ \sigma_{p}^{2} = w'\sum w $$
+$$\sigma_{p}^{2} = Sigma\space of\space Portfolios\\ w' = transpose\space of\space weight\space matrix\\ w = weight\space matrix$$
+
+
+The Sharpe Ratio of a portfolio is defined as the expected excess return of the portfolio to the portfolio sigma or volatility. It is used to calculate risk-adjusted returns for the portfolios. 
+Optimal portfolio is defined as the portfolio with highest Sharpe Ratio. 
+### Sharpe Ratio
+$$S_{p} = \frac{E(r_{p}) - r_{f}}{\sigma_{p}}$$
+$$ S_{p} = Sharpe\space Ratio\\E(r_{p}) = Expected\space Return\space on\space Portfolios\\\sigma_{p} = Std. Dev\space or Sigma\space of\space Portfolios$$
+
+# Scope of Analysis
+The primary objective of this report is to develop a methodology to construct and analyse portfolio combinations using basic statistical measures like mean, variance and correlation. The analysis will use simulated positive weights and risk constraints for a fully invested portfolio to select ones optimised for highest reward at a given level of risk. 
+
+# Analysis Methodology 
+### Loading Packages
+The first step towards the analysis requires loading of relevant packages. The quantmod package is added to extract Ticker data over a period of time. The commonly used dplyr and lubridate package are used ubiquitously for data manipulation and dealing with dates respectively. The ggplot package is used to develop a plot of the simulated portfolios.An additional zeallot package is used to return multiple values from a function in a proper format. 
+
+### Developing the Core Function
+
+$\underline{Data\space Extraction\space and\space Basic\space Transformation:}\\$
+Data for stock returns is extracted from multiple sources using the getsybols() function provided by the quantmod library. The data is extracted for monthly periods and stored in an empty xts object, defined before extracting the data.
+
+$\underline{Calculating\space the\space Mean\space and\space Covariance\space Matrix:}\\$ 
+Mean for each ticker value is calculated using the colMeans() function and the results rounded to 5 digits. Similarly, the covariance matrix is calculated using the var() function and the results rounded to 8 digits. 
+
+$\underline{Calculating\space the\space Portfolio\space Mean,\space Sigma\space and\space Sharpe\space Ratio:}\\$
+The next step involves generating random simulated weights using R's random number generator. To ensure that the results are reproducible, the set.seed() function is used to set the seed value to 12. the number of iterations of portfolios is set to length of ticker multiplied by 100. Using the runif() function, random deviates of uniform distribution are generated for the number of iterations of portfolios. The generated numbers are divided by sum of rows of the random numbers data frame to give simulated weights. Results of the simulated weights are stored in an empty matrix. Similarly an empty matrix is initialized to store the result of the weighted ticker returns and the portfolio means and sigma. Nested for loops are added to calculate and store the returns, for each ticker, Portfolio means and sigma for each iteration(outer for loop). The resulting matrix is converted into a data.frame for easier calculations.
+Sharpe Ratio is calculated for each simulation using the formula above. The results are stored in a portfolio_result_final_df data frame with name and returns from tickers,Portfolio Mean, Portfolio Sigma and Sharpe Ratio from which the optimal portfolio is selected using the which.max. function() to determine the one with the highest Sharpe ratio. 
+
+```{r}
+library(dplyr) 
+library(lubridate) 
+library(ggplot2) 
+library(quantmod) 
+library(data.table)
+library(plotly)
+library(zeallot)
+```
+
+```{r}
+
+myMeanVarPort <- function(tic, start_date, end_date, rf_rate)
+{
+  stock_return_out <- NULL
+  stock_return_out <- xts(stock_return_out)
+  start_date <- as.Date(as.character(start_date), "%Y%m%d")
+  end_date <- as.Date(as.character(end_date), "%Y%m%d")
+  start_year <- year(start_date)
+  end_year <- year(end_date)
+  for(i in 1:length(tic)){
+    prices = getSymbols(tic[i], auto.assign = F)
+    monthly_returns <- periodReturn(prices, period = "monthly", 
+                            type = "arithmetic")
+    stock_return_out <- merge.xts(stock_return_out, monthly_returns)
+  }
+  colnames(stock_return_out) <- tic
+  stock_return_out <- stock_return_out[paste0(start_year,'/',end_year)]
+  stock_return_out <- na.omit(stock_return_out)
+  
+  #------calculating mean returns for each Ticker-----#
+  mean_returns <- colMeans(stock_return_out, na.rm = T)
+  mean_returns <- round(mean_returns, 5)
+  
+  #---------calculating co-variance matrix----------# 
+  covar_returns <- var(stock_return_out)
+  covar_returns <- round(covar_returns, 8)
+  
+  #--------generating random simulated weights--------#
+  set.seed(12)
+  iter_num <- 100 * length(tic)
+  random_nums <- data.frame(replicate(length(tic), runif(iter_num, 1, 10)))
+  portfolio_weight_sim <- random_nums/rowSums(random_nums)
+  
+  #--------initializing empty matrices for weight and result--------#
+  portfolio_weight_matrix <- matrix(data = NA, nrow = length(tic), ncol = 1)
+  portfolio_result_matrix <- matrix(data = NA, nrow = iter_num, ncol = length(tic)+2)
+  
+  #------------Running Simulation for each Portfolio-------------#
+  for (i in 1:iter_num){
+    
+  #------Inner Loop: Calculates portfolio mean, sigma and places weights into the portfolio_result_matrix-------#
+    for (j in 1:length(tic)) {
+      portfolio_result_matrix[i,j] = portfolio_weight_matrix[j,1] = portfolio_weight_sim[i,j]
+    }
+    #Calculating mean and sigma for each portfolio and placing them in the portfolio_result_matrix
+    portfolio_result_matrix[i,(length(tic)+1)] <- t(portfolio_weight_matrix) %*% mean_returns                
+    portfolio_result_matrix[i,(length(tic)+2)] <- sqrt(t(portfolio_weight_matrix) %*% covar_returns %*% portfolio_weight_matrix) 
+  }
+  colnames(portfolio_result_matrix) <- c(tic, "Portfolio_Mean", "Portfolio_Sigma")
+  portfolio_result_df <- as.data.frame(portfolio_result_matrix)
+  
+  #---------Selecting Optimal Portfolio with Sharpe Ratio---------#
+  sharpe_ratios <- (portfolio_result_df$Portfolio_Mean - rf_rate)/portfolio_result_df$Portfolio_Sigma
+  portfolio_result_final_df <- portfolio_result_df %>% mutate(Sharpe_Ratios = sharpe_ratios)
+  optimal_portfolio_df <- portfolio_result_final_df[which.max(portfolio_result_final_df$Sharpe_Ratios),]
+  ret <- list(optimal_portfolio_df,portfolio_result_final_df,mean_returns,covar_returns,portfolio_weight_matrix)
+  return(ret)
+}
+```
+
+
+### Running the Function
+The parameters for the function are defined in separate variables and the function is run taking those variables as input parameters. Since the function is returning multiple outputs it needs to be captured while running the function to be able to utilize those data_values later while plotting the graph. To do this the code makes use of the zeallot library and assigns all the output data frames to the function in a proper format using the "%<-%" operator.
+```{r}
+tic <- c("GE", "XOM", "GBX", "SBUX", "PFE", "HMC", "NVDA")
+start_date <-  20140101
+end_date <- 20171231
+rf_rate <- 0
+c(optimal_portfolio_df,portfolio_result_final_df,mean_returns,covar_returns,portfolio_weight_matrix)%<-% myMeanVarPort(tic, start_date, end_date, rf_rate)
+```
+
+### Visualizing the Simulated Portfolio Means and Variances
+The plots are generated using the ggplot 2 library. The ggplot() function is used to initiate the graph. For the sake of convenience, data is provided for each added function separately, geom_point() function is plotting a graph between Portfolio_Mean and Portfolio_Sigma  while extracting the data from the portfolio result to plot the respective points for all the simulated portfolios. The geom_line function is used to draw a line for the Sharpe Ratio and visualize the optimal portfolio. 
+
+```{r, echo=FALSE}
+line_df <- data.frame("line_x" = c(0, optimal_portfolio_df$Portfolio_Sigma), "line_y" = c(rf_rate, optimal_portfolio_df$Portfolio_Mean))
+ggplot() +
+  geom_point(data = portfolio_result_final_df, aes(x = Portfolio_Sigma, y = Portfolio_Mean), pch = 10, colour = "red", size = 3) + 
+  geom_line(data = line_df, aes(x = line_x, y = line_y)) + 
+  annotate('text', x = optimal_portfolio_df$Portfolio_Sigma - 0.01 ,y = optimal_portfolio_df$Portfolio_Mean + 0.001, label  = "Optimal Portfolio") +
+  annotate('segment', x = optimal_portfolio_df$Portfolio_Sigma, xend = optimal_portfolio_df$Portfolio_Sigma - 0.005, y = optimal_portfolio_df$Portfolio_Mean, yend = optimal_portfolio_df$Portfolio_Mean, arrow = arrow())
+```
+
+# Result and Conclusion
+Portfolio number 356 is the optimal portfolio with the highest Sharpe Ratio i.e maximum returns and lowest acceptable risk. The bottom line is that for optimal investment choices, reward and risk should be evaluated together. Once you have identified the risk you are comfortable with, the mean-variance method makes it easy to define your potential investments and then select the highest performing options. 
+```{r}
+print(stock_return_out)
+```
